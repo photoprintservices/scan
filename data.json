@@ -1,0 +1,16 @@
+{
+ "updated": "25 Nov 2026, 09:52 IST",
+ "scanned": 28,
+ "demo": false,
+ "config": {
+  "capital": 100000,
+  "risk_pct": 1.0,
+  "min_rr": 2.0,
+  "max_pos_pct": 25,
+  "cost_pct": 0.15,
+  "sims": 2000,
+  "hold_bars": 52,
+  "seed": 19
+ },
+ "rows": []
+}
