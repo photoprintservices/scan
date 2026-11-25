@@ -1,90 +1,47 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="India 15-minute swing scanner dashboard using Yahoo Finance data.">
-<title>India Swing Scanner</title>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="India Swing Scanner with interactive Yahoo Finance technical charts.">
+<title>India Swing Scanner · Chart Intelligence</title>
+<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
 <style>
-:root{--bg:#f5f6f4;--card:#fff;--ink:#1b2320;--mute:#66706b;--line:#dde2de;--pass:#12714a;--block:#a8412f;--wait:#8a6414}
-@media(prefers-color-scheme:dark){:root{--bg:#121816;--card:#1a221f;--ink:#e6ece8;--mute:#8d9a93;--line:#2b3631;--pass:#4cc38a;--block:#e0806e;--wait:#e5bd65}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Georgia,serif;padding:16px;max-width:900px;margin:auto}
-h1{font-size:22px;margin:0}.sub{color:var(--mute);font-size:13px;margin:4px 0 16px}
-.c{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px}
-.h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.s{font-size:17px;font-weight:bold}
-.v{font-weight:bold}.PASS,.BUY{color:var(--pass)}.BLOCK,.SELL{color:var(--block)}.WAIT{color:var(--wait)}
-.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px 12px;margin-top:8px;font-size:13px}
-.g b{display:block;color:var(--mute);font-weight:normal;font-size:12px}
-.w{color:var(--block);font-size:13px;margin-top:6px}.note{color:var(--mute);font-size:13px;margin-top:6px}
-.f{color:var(--mute);font-size:12px;margin-top:16px}
-.pill{display:inline-block;border:1px solid var(--line);border-radius:20px;padding:2px 8px;font-size:11px;color:var(--mute);margin:4px 5px 0 0}
-</style>
-</head>
+:root{color-scheme:light dark;--bg:#f3f5f4;--card:#fff;--ink:#17221d;--muted:#68756e;--line:#dce4df;--green:#138354;--red:#c34c45;--amber:#a97818;--accent:#176bba;--shadow:0 8px 26px #14251b0d}
+@media(prefers-color-scheme:dark){:root{--bg:#101714;--card:#19221e;--ink:#e8f0eb;--muted:#9aa9a0;--line:#303d36;--green:#55ce91;--red:#f07d72;--amber:#e7bd65;--accent:#78baff;--shadow:none}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 Inter,system-ui,Segoe UI,Arial,sans-serif;padding:18px;max-width:1500px;margin:auto}
+header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin:4px 0 18px}h1{font-size:26px;line-height:1.2;margin:0;font-weight:760}.sub{color:var(--muted);margin-top:6px;font-size:13px}.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input,select,button{font:inherit;border:1px solid var(--line);border-radius:9px;padding:9px 12px;background:var(--card);color:var(--ink)}button{cursor:pointer;font-weight:650}button:hover{border-color:var(--accent)}.primary{background:var(--accent);border-color:var(--accent);color:white}.pill{display:inline-flex;border:1px solid var(--line);border-radius:30px;padding:4px 9px;color:var(--muted);font-size:11px;margin:3px 5px 3px 0}
+.stats{display:grid;grid-template-columns:repeat(5,minmax(130px,1fr));gap:10px;margin:12px 0 16px}.stat,.card,.panel{background:var(--card);border:1px solid var(--line);border-radius:13px;box-shadow:var(--shadow)}.stat{padding:12px 14px}.stat b{display:block;font-size:22px}.stat span{font-size:12px;color:var(--muted)}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:12px}.card{padding:14px}.top{display:flex;justify-content:space-between;align-items:center;gap:10px}.symbol{font-size:19px;font-weight:800}.signal{font-size:12px;font-weight:800;padding:4px 9px;border-radius:20px;background:#8882;color:var(--ink)}.BUY{color:var(--green)}.WAIT{color:var(--amber)}.SELL{color:var(--red)}.setup{color:var(--muted);font-size:13px;margin:5px 0 10px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px 12px}.grid small{display:block;color:var(--muted);font-size:11px}.grid strong{font-size:14px}.note{color:var(--muted);font-size:12px;margin-top:10px}.warn{color:var(--red)}.card-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}.card-actions button{font-size:12px;padding:7px 11px}
+footer{color:var(--muted);font-size:12px;margin:20px 2px}.empty{padding:20px;color:var(--muted)}
+.modal{display:none;position:fixed;inset:0;background:#0009;z-index:20;padding:16px;overflow:auto}.modal.open{display:block}.dialog{max-width:1200px;margin:2vh auto;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 18px 70px #0005}.dialog-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.dialog h2{margin:0;font-size:22px}.chart-toolbar{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0;align-items:center}.chart-toggle{display:inline-flex;gap:5px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:12px;color:var(--muted)}.chart-toggle input{padding:0;margin:0}.chart-toolbar button.active{background:var(--accent);color:white;border-color:var(--accent)}.chart-layout{display:grid;grid-template-columns:minmax(0,1fr) 245px;gap:12px}.chart-main{min-width:0}.chartbox{height:410px;width:100%;border:1px solid var(--line);border-radius:10px;overflow:hidden}.subchart{height:115px;width:100%;margin-top:9px;border:1px solid var(--line);border-radius:10px;overflow:hidden}.chart-side{border:1px solid var(--line);border-radius:10px;padding:12px;height:max-content}.chart-side h3{font-size:13px;margin:0 0 10px}.level{display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:6px 0;border-bottom:1px solid var(--line)}.legend{font-size:11px;color:var(--muted);margin:8px 0}.chart-error{padding:24px;color:var(--muted)}
+@media(max-width:850px){body{padding:12px}.stats{grid-template-columns:repeat(2,1fr)}.chart-layout{grid-template-columns:1fr}.chart-side{display:grid;grid-template-columns:repeat(2,1fr);gap:0 14px}.chartbox{height:330px}}
+</style></head>
 <body>
-<h1>India Swing Scanner</h1>
-<div class="sub" id="m">Loading scanner data…</div>
-<div id="summary"></div>
-<div id="o"><div class="c">Loading latest scan…</div></div>
-<div class="f">Educational tool, not investment advice. Data from Yahoo Finance may be delayed or incomplete. Backtest and replay are estimates; past results do not predict future results. Verify prices and risk independently before acting. This dashboard does not place broker orders. SELL / EXIT means review an existing cash long; it is not a short-entry recommendation.</div>
+<header><div><h1>India Swing Scanner</h1><div class="sub" id="meta">Loading latest Yahoo Finance scan…</div></div><div class="toolbar"><input id="search" placeholder="Search symbol…" aria-label="Search symbol"><button onclick="refreshDashboard()">↻ Refresh</button></div></header>
+<div id="pills"></div><section class="stats" id="stats"></section>
+<div class="filters"><select id="signalFilter"><option value="ALL">All signals</option><option>BUY</option><option>WAIT</option><option>SELL / EXIT</option></select><select id="regimeFilter"><option value="ALL">All market regimes</option><option>BULLISH</option><option>SIDEWAYS</option><option>BEARISH</option><option>UNKNOWN</option></select><select id="sortFilter"><option value="score">Sort: scanner score</option><option value="symbol">Sort: symbol</option></select></div>
+<div class="cards" id="cards"><div class="card empty">Loading scanner results…</div></div>
+<footer>Educational research dashboard, not investment advice. Data from Yahoo Finance may be delayed, incomplete or rate-limited. Interactive chart history uses Yahoo daily candles; 1W and 1M views are aggregated from those daily candles. Scanner signals remain based on the existing 15-minute engine. Verify prices and risk independently. No broker orders are placed.</footer>
+<div class="modal" id="chartModal" onclick="if(event.target===this)closeChart()"><div class="dialog"><div class="dialog-head"><div><h2 id="chartTitle">Chart analysis</h2><div class="sub" id="chartSub"></div></div><button onclick="closeChart()">✕ Close</button></div><div class="chart-toolbar"><button class="active" data-period="1D" onclick="setPeriod('1D',this)">Daily</button><button data-period="1W" onclick="setPeriod('1W',this)">Weekly</button><button data-period="1M" onclick="setPeriod('1M',this)">Monthly</button><label class="chart-toggle"><input type="checkbox" id="paSR" checked onchange="drawChart()"> S/R</label><label class="chart-toggle"><input type="checkbox" id="paZones" checked onchange="drawChart()"> Supply / Demand</label><label class="chart-toggle"><input type="checkbox" id="paFib" onchange="drawChart()"> Fibonacci</label><label class="chart-toggle"><input type="checkbox" id="paTrend" checked onchange="drawChart()"> Trendlines</label></div><div class="chart-layout"><div class="chart-main"><div id="priceChart" class="chartbox"></div><div class="legend">Candles · EMA 20 · EMA 50 · horizontal scanner entry / stop / target references</div><div id="volumeChart" class="subchart"></div><div class="legend">Volume</div><div id="rsiChart" class="subchart"></div><div class="legend">RSI (14)</div></div><aside class="chart-side" id="chartLevels"></aside></div></div></div>
 <script>
-const money = v => v == null ? "–" : "₹" + Number(v).toLocaleString("en-IN",{maximumFractionDigits:2});
-const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-let lastDataUpdated = "";
-function card(r){
-  const isExit = r.signal === "SELL / EXIT";
-  if(isExit){
-    return `<div class="c">
-      <div class="h"><span class="s">${esc(r.symbol)}</span><span class="v SELL">SELL / EXIT</span></div>
-      <div>${esc(r.setup || "Bearish breakdown")} · RSI ${esc(r.rsi)} · volume ${esc(r.vol_x)}x</div>
-      <div class="note">${esc(r.reason || "Review an existing long position. Not a short-entry signal.")}</div>
-      <div class="g"><div><b>Latest close</b>${money(r.entry)}</div><div><b>Market regime</b>${esc(r.market_regime || "–")}</div><div><b>Signal candle</b>${esc(r.bar || "–")}</div></div>
-    </div>`;
-  }
-  const b=r.backtest||{}, p=r.replay||{}, k=r.risk||{};
-  const verdict=k.verdict||r.signal||"WAIT";
-  return `<div class="c">
-    <div class="h"><span class="s">${esc(r.symbol)}</span><span class="v ${esc(verdict)}">${esc(r.signal||verdict)} · ${esc(verdict)}</span></div>
-    <div>${esc(r.setup)} · RSI ${esc(r.rsi)} · volume ${esc(r.vol_x)}x</div>
-    <div class="g">
-      <div><b>Entry reference</b>${money(r.entry)}</div><div><b>Stop-loss</b>${money(r.sl)}</div><div><b>Target</b>${money(r.target)}</div><div><b>Reward:risk</b>${esc(k.rr ?? "–")}</div>
-      <div><b>Illustrative quantity</b>${esc(k.qty ?? "–")}</div><div><b>Capital used</b>${money(k.capital_used)}</div><div><b>Estimated max loss</b>${money(k.max_loss)}</div>
-      <div><b>Replay: target first</b>${p.target==null?"–":esc(p.target)+"%"}</div><div><b>Replay: stop first</b>${p.stop==null?"–":esc(p.stop)+"%"}</div><div><b>Backtest trades</b>${esc(b.n ?? "–")}</div>
-      <div><b>Backtest win rate</b>${b.win==null?"–":esc(b.win)+"%"}</div><div><b>Average result (R)</b>${esc(b.avg_r ?? "–")}</div>
-    </div>
-    ${k.reasons?.length?`<div class="w">Blocked: ${k.reasons.map(esc).join("; ")}</div>`:""}
-    ${r.reason?`<div class="note">${esc(r.reason)}</div>`:""}
-    <div class="note">Signal candle: ${esc(r.bar || "–")} · Regime: ${esc(r.market_regime || "–")}</div>
-  </div>`;
-}
-async function refreshDashboard(){
-  try{
-    const response = await fetch("data.json?ts="+Date.now(),{cache:"no-store"});
-    if(!response.ok) throw new Error("HTTP "+response.status);
-    const d = await response.json();
-    const rows = Array.isArray(d.rows)?d.rows:[];
-    lastDataUpdated = d.updated || "";
-    document.getElementById("m").textContent =
-      `Updated ${d.updated||"–"} · ${d.config?.timeframe||"15m"} candles · ${d.scanned??0}/${d.universe_count??"–"} stocks scanned${d.demo?" · DEMO DATA":""}`;
-    document.getElementById("summary").innerHTML =
-      `<span class="pill">Source: ${esc(d.data_source||"Yahoo Finance")}</span><span class="pill">Universe file: ${esc(d.universe_source||"–")}</span><span class="pill">NIFTY regime: ${esc(d.market_regime||"UNKNOWN")}</span><span class="pill">Signals: ${rows.length}</span><span class="pill">Auto-check: every 60 sec</span>`;
-    if(!rows.length){
-      document.getElementById("o").innerHTML =
-        `<div class="c">No setups right now. Scanned ${esc(d.scanned??0)} of ${esc(d.universe_count??0)} symbols. Check again after the next scheduled scan.${d.errors?.length?`<div class="note">${esc(d.errors.length)} symbol/data errors occurred.</div>`:""}</div>`;
-      return;
-    }
-    document.getElementById("o").innerHTML = rows.map(card).join("") +
-      (d.errors?.length?`<div class="c note">Data errors for ${esc(d.errors.length)} symbol(s). Some symbols may not have returned usable Yahoo Finance history.</div>`:"");
-  }catch(err){
-    if(!lastDataUpdated){
-      document.getElementById("m").textContent="Scanner data could not be loaded.";
-      document.getElementById("o").innerHTML =
-        `<div class="c">No readable data.json found. Run the GitHub Actions workflow once and confirm that data.json is committed to the repository.<div class="note">${esc(err.message)}</div></div>`;
-    }
-  }
-}
-refreshDashboard();
-setInterval(refreshDashboard, 60000);
-</script>
-</body>
-</html>
+const $=id=>document.getElementById(id),money=v=>v==null?'–':'₹'+Number(v).toLocaleString('en-IN',{maximumFractionDigits:2}),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let DATA=null,activeRow=null,charts=[],period='1D';
+function renderStats(d,rows){const n=s=>rows.filter(x=>x.signal===s).length;$('stats').innerHTML=[['Scanned',d.scanned??0],['BUY',n('BUY')],['WAIT',n('WAIT')],['SELL / EXIT',n('SELL / EXIT')],['Universe',d.universe_count??0]].map(x=>`<div class="stat"><b>${esc(x[1])}</b><span>${x[0]}</span></div>`).join('')}
+function card(r){const b=r.backtest||{},p=r.replay||{},k=r.risk||{},exit=r.signal==='SELL / EXIT';return `<article class="card"><div class="top"><span class="symbol">${esc(r.symbol)}</span><span class="signal ${exit?'SELL':esc(r.signal)}">${esc(r.signal||'WAIT')}</span></div><div class="setup">${esc(r.setup||'')} · RSI ${esc(r.rsi??'–')} · Volume ${esc(r.vol_x??'–')}x</div><div class="grid"><div><small>Entry reference</small><strong>${money(r.entry)}</strong></div><div><small>Stop-loss</small><strong>${money(r.sl)}</strong></div><div><small>Target</small><strong>${money(r.target)}</strong></div><div><small>Reward : Risk</small><strong>${esc(k.rr??'–')}</strong></div><div><small>Backtest win rate</small><strong>${b.win==null?'–':esc(b.win)+'%'}</strong></div><div><small>Replay target first</small><strong>${p.target==null?'–':esc(p.target)+'%'}</strong></div></div>${k.reasons?.length?`<div class="note warn">Blocked: ${k.reasons.map(esc).join('; ')}</div>`:''}<div class="note">${esc(r.reason||'')}<br>15m signal candle: ${esc(r.bar||'–')} · NIFTY: ${esc(r.market_regime||'UNKNOWN')}</div><div class="card-actions"><button class="primary" ${r.chart?.length?'':'disabled'} onclick="openChart('${esc(r.symbol)}')">▥ Open interactive chart</button><span class="pill">${r.chart?.length?'Daily chart ready':'Chart history unavailable'}</span></div></article>`}
+function applyFilters(){if(!DATA)return;let rows=[...(DATA.rows||[])],q=$('search').value.trim().toUpperCase(),sig=$('signalFilter').value,reg=$('regimeFilter').value;rows=rows.filter(r=>(!q||r.symbol.includes(q))&&(sig==='ALL'||r.signal===sig)&&(reg==='ALL'||(r.market_regime||'UNKNOWN')===reg));if($('sortFilter').value==='symbol')rows.sort((a,b)=>a.symbol.localeCompare(b.symbol));else rows.sort((a,b)=>(b.score||0)-(a.score||0));$('cards').innerHTML=rows.length?rows.map(card).join(''):'<div class="card empty">No stocks match the selected filters.</div>'}
+async function refreshDashboard(){try{const res=await fetch('data.json?ts='+Date.now(),{cache:'no-store'});if(!res.ok)throw Error('HTTP '+res.status);DATA=await res.json();const rows=DATA.rows||[];$('meta').textContent=`Updated ${DATA.updated||'–'} · Existing scanner timeframe ${DATA.config?.timeframe||'15m'} · ${DATA.scanned??0}/${DATA.universe_count??0} stocks scanned`;$('pills').innerHTML=[`Source: ${DATA.data_source||'Yahoo Finance'}`,`Universe: ${DATA.universe_source||'–'}`,`NIFTY regime: ${DATA.market_regime||'UNKNOWN'}`,`Signals: ${rows.length}`,`Auto-refresh: 60 sec`].map(x=>`<span class="pill">${esc(x)}</span>`).join('');renderStats(DATA,rows);applyFilters()}catch(e){$('meta').textContent='Could not load data.json';$('cards').innerHTML=`<div class="card empty">Run the existing GitHub Actions scan workflow and confirm data.json is published.<br>${esc(e.message)}</div>`}}
+['search','signalFilter','regimeFilter','sortFilter'].forEach(id=>$(id).addEventListener(id==='search'?'input':'change',applyFilters));
+function aggregate(rows,kind){if(kind==='1D')return rows;const groups=new Map();for(const r of rows){const d=new Date(r.time+'T00:00:00Z');let key;if(kind==='1W'){const day=(d.getUTCDay()+6)%7;d.setUTCDate(d.getUTCDate()-day);key=d.toISOString().slice(0,10)}else key=d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0');let x=groups.get(key);if(!x)x={time:kind==='1W'?key:key+'-01',open:r.open,high:r.high,low:r.low,close:r.close,volume:r.volume};else{x.high=Math.max(x.high,r.high);x.low=Math.min(x.low,r.low);x.close=r.close;x.volume+=r.volume}groups.set(key,x)}const out=[...groups.values()];const ema=(arr,n)=>{let a=2/(n+1),v;return arr.map(x=>{v=v==null?x.close:v+a*(x.close-v);return +v.toFixed(2)})};const e20=ema(out,20),e50=ema(out,50);return out.map((x,i)=>({...x,ema20:e20[i],ema50:e50[i],rsi:calcRsi(out.slice(0,i+1).map(z=>z.close))}))}
+function calcRsi(c){if(c.length<15)return 50;let g=0,l=0;for(let i=c.length-14;i<c.length;i++){let d=c[i]-c[i-1];if(d>0)g+=d;else l-=d}return l===0?100:100-100/(1+g/l)}
+function clearCharts(){charts.forEach(c=>{try{c.remove()}catch(e){}});charts=[]}
+function addLine(chart,price,color,title,rows){if(price==null||!Number.isFinite(Number(price)))return;const s=chart.addLineSeries({color,lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:true,title});s.setData([{time:rows[0].time,value:Number(price)},{time:rows[rows.length-1].time,value:Number(price)}])}
+function openChart(symbol){activeRow=DATA.rows.find(r=>r.symbol===symbol);if(!activeRow?.chart?.length)return;$('chartModal').classList.add('open');$('chartTitle').textContent=symbol+' · Interactive technical chart';$('chartSub').textContent='Yahoo Finance daily history · scanner trigger uses 15-minute candles';period='1D';document.querySelectorAll('[data-period]').forEach(b=>b.classList.toggle('active',b.dataset.period==='1D'));drawChart();}
+function setPeriod(p,btn){period=p;document.querySelectorAll('[data-period]').forEach(b=>b.classList.toggle('active',b===btn));drawChart()}
+function paPanel(){const p=activeRow?.price_action||{};const line=(label,v)=>`<div class="level"><span>${label}</span><b>${v==null?'–':money(v)}</b></div>`;const zones=[...(p.supply_zones||[]).map(z=>`Supply ${money(z.low)}–${money(z.high)}`),...(p.demand_zones||[]).map(z=>`Demand ${money(z.low)}–${money(z.high)}`)];$('chartLevels').innerHTML=`<h3>Scanner references</h3><div class="level"><span>Signal</span><b>${esc(activeRow.signal)}</b></div>${line('Entry',activeRow.entry)}${line('Stop-loss',activeRow.sl)}${line('Target',activeRow.target)}<div class="level"><span>RSI (15m)</span><b>${esc(activeRow.rsi??'–')}</b></div><div class="level"><span>Volume ratio (15m)</span><b>${esc(activeRow.vol_x??'–')}x</b></div><div class="level"><span>NIFTY regime</span><b>${esc(activeRow.market_regime||'UNKNOWN')}</b></div><h3 style="margin-top:14px">Daily price action</h3><div class="level"><span>Structure</span><b>${esc(p.structure||'Unavailable')}</b></div>${line('Nearest support',p.nearest_support)}${line('Next support',p.next_support)}${line('Nearest resistance',p.nearest_resistance)}${line('Next resistance',p.next_resistance)}<div class="level"><span>Candle pattern</span><b>${esc((p.patterns||[]).join(', '))}</b></div>${zones.map(z=>`<div class="level"><span>${esc(z)}</span></div>`).join('')}<p class="note">${esc(p.method||'Price-action analysis unavailable.')} Levels are descriptive technical references, not trade instructions.</p>`}
+function addPALine(chart,price,color,title,rows,style=2){if(price==null||!Number.isFinite(Number(price))||!rows.length)return;const s=chart.addLineSeries({color,lineWidth:1,lineStyle:style,priceLineVisible:false,lastValueVisible:false,title});s.setData([{time:rows[0].time,value:Number(price)},{time:rows[rows.length-1].time,value:Number(price)}])}
+function drawChart(){clearCharts();if(!activeRow?.chart?.length)return;const raw=aggregate(activeRow.chart,period),dark=matchMedia('(prefers-color-scheme: dark)').matches,txt=dark?'#cbd5cf':'#53625a',grid=dark?'#2b3831':'#e7ece8';const base={layout:{background:{color:'transparent'},textColor:txt},grid:{vertLines:{color:grid},horzLines:{color:grid}},rightPriceScale:{borderColor:grid},timeScale:{borderColor:grid,timeVisible:true},crosshair:{mode:1}};const price=LightweightCharts.createChart($('priceChart'),{...base,width:$('priceChart').clientWidth,height:$('priceChart').clientHeight});charts.push(price);const candle=price.addCandlestickSeries({upColor:'#16a36a',downColor:'#d65353',borderUpColor:'#16a36a',borderDownColor:'#d65353',wickUpColor:'#16a36a',wickDownColor:'#d65353'});candle.setData(raw.map(x=>({time:x.time,open:x.open,high:x.high,low:x.low,close:x.close})));for(const [key,color,title] of [['ema20','#e5a52b','EMA 20'],['ema50','#4287d5','EMA 50']]){const line=price.addLineSeries({color,lineWidth:2,priceLineVisible:false,lastValueVisible:true,title});line.setData(raw.map(x=>({time:x.time,value:x[key]??x.close})));}addLine(price,activeRow.entry,'#8c65c7','Entry',raw);addLine(price,activeRow.sl,'#d65353','Stop',raw);addLine(price,activeRow.target,'#16a36a','Target',raw);const pa=activeRow.price_action||{};if($('paSR')?.checked){addPALine(price,pa.nearest_support,'#169b75','Support',raw,2);addPALine(price,pa.next_support,'#169b7588','Support 2',raw,2);addPALine(price,pa.nearest_resistance,'#d45b4c','Resistance',raw,2);addPALine(price,pa.next_resistance,'#d45b4c88','Resistance 2',raw,2)}if($('paZones')?.checked){(pa.supply_zones||[]).forEach((z,i)=>{addPALine(price,z.low,'#c75a4d','Supply low',raw,1);addPALine(price,z.high,'#c75a4d','Supply high',raw,1)});(pa.demand_zones||[]).forEach(z=>{addPALine(price,z.low,'#199b78','Demand low',raw,1);addPALine(price,z.high,'#199b78','Demand high',raw,1)})}if($('paFib')?.checked){Object.entries(pa.fibonacci||{}).forEach(([k,v])=>addPALine(price,v,'#a17acb','Fib '+k,raw,2))}if($('paTrend')?.checked){(pa.trendlines||[]).forEach(t=>{const offset=Math.max(0,raw.length-180),a=raw[offset+t.x1],b=raw[offset+t.x2];if(a&&b){const ts=price.addLineSeries({color:'#d39b37',lineWidth:2,priceLineVisible:false,lastValueVisible:false,title:t.kind});ts.setData([{time:a.time,value:t.y1},{time:b.time,value:t.y2}])}})}price.timeScale().fitContent();paPanel();
+const vol=LightweightCharts.createChart($('volumeChart'),{...base,width:$('volumeChart').clientWidth,height:$('volumeChart').clientHeight,rightPriceScale:{borderColor:grid,scaleMargins:{top:.1,bottom:.05}},timeScale:{visible:false}});charts.push(vol);const vs=vol.addHistogramSeries({priceFormat:{type:'volume'},priceScaleId:'right'});vs.setData(raw.map(x=>({time:x.time,value:x.volume,color:x.close>=x.open?'#16a36a88':'#d6535388'})));vol.timeScale().fitContent();
+const rsi=LightweightCharts.createChart($('rsiChart'),{...base,width:$('rsiChart').clientWidth,height:$('rsiChart').clientHeight,rightPriceScale:{borderColor:grid,scaleMargins:{top:.12,bottom:.12}},timeScale:{visible:true}});charts.push(rsi);const rs=rsi.addLineSeries({color:'#9b70d4',lineWidth:2,priceLineVisible:false});rs.setData(raw.map(x=>({time:x.time,value:x.rsi??50})));[30,70].forEach(v=>{const l=rsi.addLineSeries({color:grid,lineStyle:2,lineWidth:1,priceLineVisible:false,lastValueVisible:false});l.setData(raw.map(x=>({time:x.time,value:v})))});rsi.timeScale().fitContent();}
+function closeChart(){$('chartModal').classList.remove('open');clearCharts();activeRow=null}window.addEventListener('resize',()=>{if($('chartModal').classList.contains('open'))drawChart()});document.addEventListener('keydown',e=>{if(e.key==='Escape')closeChart()});refreshDashboard();setInterval(refreshDashboard,60000);
+</script></body></html>

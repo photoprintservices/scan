@@ -178,6 +178,91 @@ def risk_gate(e,sl,tp,bt,sim):
     return dict(verdict="BLOCK" if why else "PASS",reasons=why,qty=qty,rr=round(rr,2),
                 max_loss=round(qty*rps),capital_used=round(qty*e))
 
+
+def _pivot_points(values, left=3, right=3):
+    highs, lows = [], []
+    arr = np.asarray(values, dtype=float)
+    for i in range(left, len(arr)-right):
+        w = arr[i-left:i+right+1]
+        if arr[i] == np.max(w) and np.sum(w == arr[i]) == 1:
+            highs.append(i)
+        if arr[i] == np.min(w) and np.sum(w == arr[i]) == 1:
+            lows.append(i)
+    return highs, lows
+
+def _price_action(d):
+    """Descriptive daily price-action levels; not a predictive signal."""
+    close=float(d.Close.iloc[-1]); high=float(d.High.iloc[-1]); low=float(d.Low.iloc[-1])
+    tr=pd.concat([d.High-d.Low,(d.High-d.Close.shift()).abs(),(d.Low-d.Close.shift()).abs()],axis=1).max(axis=1)
+    atr=float(tr.rolling(14).mean().iloc[-1]) if len(d)>=14 else max(high-low, close*.01)
+    atr=atr if np.isfinite(atr) and atr>0 else max(close*.01, .01)
+    ph,pl=_pivot_points(d.High.tail(180).values),_pivot_points(d.Low.tail(180).values)
+    hidx,lidx=ph[0],pl[1]
+    highs=[(int(i),float(d.High.tail(180).iloc[i])) for i in hidx[-6:]]
+    lows=[(int(i),float(d.Low.tail(180).iloc[i])) for i in lidx[-6:]]
+    resist=sorted([v for _,v in highs if v>close])
+    support=sorted([v for _,v in lows if v<close],reverse=True)
+    # Recent confirmed swing points form simple, auditable supply/demand zones.
+    supply=[]; demand=[]
+    for i,v in highs[-2:]:
+        supply.append({'low':round(v-0.35*atr,2),'high':round(v+0.15*atr,2),'pivot_index':i})
+    for i,v in lows[-2:]:
+        demand.append({'low':round(v-0.15*atr,2),'high':round(v+0.35*atr,2),'pivot_index':i})
+    last_highs=[v for _,v in highs[-2:]]; last_lows=[v for _,v in lows[-2:]]
+    structure='RANGE / UNCONFIRMED'
+    if len(last_highs)==2 and len(last_lows)==2:
+        if last_highs[-1]>last_highs[-2] and last_lows[-1]>last_lows[-2]: structure='HH + HL (BULLISH)'
+        elif last_highs[-1]<last_highs[-2] and last_lows[-1]<last_lows[-2]: structure='LH + LL (BEARISH)'
+        elif last_highs[-1]>last_highs[-2]: structure='HIGHER HIGH; LOW STRUCTURE MIXED'
+        elif last_highs[-1]<last_highs[-2]: structure='LOWER HIGH; LOW STRUCTURE MIXED'
+    swing_low=float(d.Low.tail(180).iloc[lidx[-1]]) if lidx else float(d.Low.tail(60).min())
+    swing_high=float(d.High.tail(180).iloc[hidx[-1]]) if hidx else float(d.High.tail(60).max())
+    lo0,hi0=sorted([swing_low,swing_high]); span=hi0-lo0
+    fib={k:round(hi0-span*r,2) for k,r in [('0.236',.236),('0.382',.382),('0.500',.5),('0.618',.618),('0.786',.786)]} if span>0 else {}
+    # Last confirmed two swing lows/highs are used as simple trendline anchors.
+    trend=[]
+    if len(lows)>=2:
+        (x1,y1),(x2,y2)=lows[-2:]
+        trend.append({'kind':'Rising/falling support trendline','x1':x1,'y1':round(y1,2),'x2':x2,'y2':round(y2,2)})
+    if len(highs)>=2:
+        (x1,y1),(x2,y2)=highs[-2:]
+        trend.append({'kind':'Resistance trendline','x1':x1,'y1':round(y1,2),'x2':x2,'y2':round(y2,2)})
+    # Simple latest-candle pattern checks.
+    o=float(d.Open.iloc[-1]); po=float(d.Open.iloc[-2]); pc=float(d.Close.iloc[-2])
+    body=abs(close-o); rng=max(high-low,1e-9); lower=min(o,close)-low; upper=high-max(o,close)
+    patterns=[]
+    if close>o and pc<po and close>=po and o<=pc: patterns.append('Bullish engulfing')
+    if close<o and pc>po and close<=po and o>=pc: patterns.append('Bearish engulfing')
+    if lower>=2*max(body,1e-9) and upper<=.35*max(body,1e-9): patterns.append('Hammer-like candle')
+    if upper>=2*max(body,1e-9) and lower<=.35*max(body,1e-9): patterns.append('Shooting-star-like candle')
+    return {'as_of':d.index[-1].strftime('%Y-%m-%d'),'structure':structure,
+        'nearest_support':round(support[0],2) if support else None,
+        'next_support':round(support[1],2) if len(support)>1 else None,
+        'nearest_resistance':round(resist[0],2) if resist else None,
+        'next_resistance':round(resist[1],2) if len(resist)>1 else None,
+        'supply_zones':supply,'demand_zones':demand,'fibonacci':fib,
+        'trendlines':trend,'patterns':patterns or ['No simple reversal pattern detected'],
+        'swing_range':{'low':round(lo0,2),'high':round(hi0,2)},
+        'method':'Daily pivots (3 bars left/right), recent swing levels and latest candle rules; descriptive, not predictive.'}
+
+def load_chart_history(symbol):
+    """Fetch daily Yahoo OHLCV and compute visual indicators/price-action context."""
+    import yfinance as yf
+    d=yf.download(symbol+'.NS',period='2y',interval='1d',progress=False,auto_adjust=True,prepost=False,threads=False,timeout=15)
+    if isinstance(d.columns,pd.MultiIndex): d.columns=d.columns.get_level_values(0)
+    if d.empty: return None,None
+    d=d.dropna().copy()
+    needed=('Open','High','Low','Close','Volume')
+    if any(c not in d.columns for c in needed) or len(d)<30: return None,None
+    d['ema20']=d.Close.ewm(span=20,adjust=False).mean(); d['ema50']=d.Close.ewm(span=50,adjust=False).mean()
+    d['rsi14']=_rsi(d.Close,14)
+    out=[]
+    for ts,row in d.tail(520).iterrows():
+        out.append({'time':ts.strftime('%Y-%m-%d'),'open':round(float(row.Open),2),'high':round(float(row.High),2),
+          'low':round(float(row.Low),2),'close':round(float(row.Close),2),'volume':int(max(0,row.Volume)),
+          'ema20':round(float(row.ema20),2),'ema50':round(float(row.ema50),2),'rsi':round(float(row.rsi14),1)})
+    return out,_price_action(d.tail(180).reset_index(drop=False).set_index(d.tail(180).index))
+
 def _scan_one(symbol):
     raw = load(symbol)
     if len(raw) < 120:
@@ -229,10 +314,31 @@ def main():
             except Exception as ex:
                 errors.append({"symbol":s,"error":f"{type(ex).__name__}: {str(ex)[:160]}"})
     rows.sort(key=lambda r:(r.get("signal")!="BUY",-r.get("score",0)))
+    # Attach daily candles and descriptive price-action analysis to the leading 40 signal rows.
+    # This is separate from the unchanged 15m scanner, setup, backtest and risk calculations.
+    chart_errors=[]
+    if not os.getenv("DEMO"):
+        with ThreadPoolExecutor(max_workers=4) as chart_pool:
+            jobs={chart_pool.submit(load_chart_history,row["symbol"]):row for row in rows[:40]}
+            for job in as_completed(jobs):
+                row=jobs[job]
+                try:
+                    candles,pa=job.result()
+                    row["chart"]=candles
+                    row["price_action"]=pa
+                    if candles is None: chart_errors.append({"symbol":row["symbol"],"error":"Yahoo daily chart history unavailable"})
+                except Exception as ex:
+                    row["chart"]=None; row["price_action"]=None
+                    chart_errors.append({"symbol":row["symbol"],"error":f"Chart: {type(ex).__name__}: {str(ex)[:120]}"})
+    else:
+        for row in rows[:40]: row["chart"]=None; row["price_action"]=None
+    errors.extend(chart_errors)
     ist=dt.datetime.now(dt.timezone(dt.timedelta(hours=5,minutes=30)))
     payload=dict(updated=ist.strftime("%d %b %Y, %H:%M IST"),scanned=scanned,
         universe_count=len(symbols),universe_source=universe_source,data_source="Yahoo Finance 15m",
-        market_regime=regime,demo=bool(os.getenv("DEMO")),config=CFG,rows=rows,errors=errors)
+        chart_data_source="Yahoo Finance daily OHLCV", chart_history_count=sum(bool(r.get("chart")) for r in rows),
+        price_action_version="daily-pivots-v1", market_regime=regime,
+        demo=bool(os.getenv("DEMO")),config=CFG,rows=rows,errors=errors)
     Path("data.json").write_text(json.dumps(payload,indent=2,default=str),encoding="utf-8")
     print(f"scanned {scanned}/{len(symbols)}, setups {len(rows)}, NIFTY {regime}; source={universe_source}")
 if __name__=="__main__":
