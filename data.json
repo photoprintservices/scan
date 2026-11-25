@@ -1,13 +1,13 @@
 {
-  "updated": "25 Nov 2026, 10:18 IST",
-  "scanned": 28,
-  "universe_count": 28,
-  "universe_source": "fno_symbols.txt",
+  "updated": "25 Nov 2026, 10:32 IST",
+  "scanned": 220,
+  "universe_count": 221,
+  "universe_source": "v6.1.1 curated 152 + public F&O master 69",
   "data_source": "Yahoo Finance 15m",
   "market_regime": "BULLISH",
   "demo": false,
   "config": {
-    "universe": "fno",
+    "universe": "v6.1.1 EXTENDED + current F&O",
     "timeframe": "15m",
     "rsi_period": 14,
     "capital": 100000,
@@ -27,6 +27,47 @@
     "rsi_sell_max": 45,
     "use_nifty_filter": true
   },
-  "rows": [],
-  "errors": []
+  "rows": [
+    {
+      "symbol": "CROMPTON",
+      "signal": "WAIT",
+      "setup": "Pullback + engulfing",
+      "entry": 222.82,
+      "sl": 219.67,
+      "target": 229.13,
+      "rsi": 59.2,
+      "vol_x": 0.21,
+      "backtest": {
+        "n": 10,
+        "win": 20.0,
+        "avg_r": -0.48
+      },
+      "replay": {
+        "target": 22.8,
+        "stop": 66.0,
+        "open": 11.2
+      },
+      "risk": {
+        "verdict": "BLOCK",
+        "reasons": [
+          "replay: stop hit at least as often as target",
+          "backtest expectancy not positive"
+        ],
+        "qty": 112,
+        "rr": 2.0,
+        "max_loss": 353,
+        "capital_used": 24956
+      },
+      "market_regime": "BULLISH",
+      "score": -48.0,
+      "reason": "replay: stop hit at least as often as target; backtest expectancy not positive",
+      "bar": "2026-11-25 10:30:00+05:30"
+    }
+  ],
+  "errors": [
+    {
+      "symbol": "LTIM",
+      "error": "insufficient Yahoo Finance history"
+    }
+  ]
 }
