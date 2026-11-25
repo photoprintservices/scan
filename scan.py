@@ -19,7 +19,8 @@ CFG = dict(
     breakout_lookback=20, volume_multiple=1.30,
     ema_fast=20, ema_slow=50, atr_period=14,
     rsi_buy_min=55, rsi_sell_max=45,
-    use_nifty_filter=True
+    use_nifty_filter=True, min_backtest_trades=5, max_extension_atr=2.0,
+    breakout_close_position_min=0.60, pullback_close_position_min=0.55
 )
 Dhan_MASTER_URL = "https://images.dhan.co/api-data/api-scrip-master-detailed.csv"
 UA = {"User-Agent": "Mozilla/5.0"}
@@ -166,17 +167,78 @@ def simulate(d,e,sl,tp):
                 stop=round(float((st==2).mean()*100),1),
                 open=round(float((st==0).mean()*100),1))
 
-def risk_gate(e,sl,tp,bt,sim):
+def technical_confirmation(d):
+    """Confirm the latest 15m setup candle; this is a hard BUY quality gate."""
+    x = d.iloc[-1]
+    reasons = []
+    candle_range = max(float(x.High - x.Low), 1e-9)
+    close_position = float((x.Close - x.Low) / candle_range)
+    bullish_candle = bool(x.Close > x.Open)
+    ema20_rising = bool(len(d) >= 4 and x.e20 > d.e20.iloc[-4])
+    atr = float(x.atr) if pd.notna(x.atr) and float(x.atr) > 0 else 0.0
+    extension_atr = float((x.Close - x.e20) / atr) if atr else 0.0
+
+    if not bullish_candle:
+        reasons.append("latest 15m candle is not bullish")
+    if not ema20_rising:
+        reasons.append("15m EMA20 is not rising")
+
+    if x.sig == "Breakout":
+        if close_position < CFG["breakout_close_position_min"]:
+            reasons.append("breakout candle did not close near its high")
+        if pd.isna(x.hh) or x.Close <= x.hh:
+            reasons.append("breakout close is not above prior 20-bar high")
+        if pd.isna(x.vr) or x.vr < CFG["volume_multiple"]:
+            reasons.append("breakout volume confirmation missing")
+    elif x.sig == "Pullback + engulfing":
+        if close_position < CFG["pullback_close_position_min"]:
+            reasons.append("pullback candle close is weak")
+        if x.Close <= x.e20:
+            reasons.append("pullback has not reclaimed EMA20")
+    else:
+        reasons.append("setup type is not eligible for a long BUY")
+
+    if atr and extension_atr > CFG["max_extension_atr"]:
+        reasons.append(f"price extended {extension_atr:.1f} ATR above EMA20")
+
+    return dict(passed=not reasons, reasons=reasons,
+                close_position=round(close_position, 2),
+                ema20_rising=ema20_rising,
+                extension_atr=round(extension_atr, 2))
+
+
+def confidence_score(bt, sim, technical):
+    """A 0-100 diagnostic score; replay contributes context but never blocks BUY."""
+    score = 35.0 if technical["passed"] else 10.0
+    n = int(bt.get("n") or 0)
+    avg_r = bt.get("avg_r")
+    if avg_r is not None:
+        score += float(np.clip(15.0 + 10.0 * float(avg_r), 0, 30))
+    score += 15.0 if n >= 10 else (10.0 if n >= CFG["min_backtest_trades"] else 3.0)
+    replay_edge = float(sim.get("target", 0)) - float(sim.get("stop", 0))
+    score += float(np.clip(10.0 + replay_edge * 0.25, 0, 20))
+    return int(round(float(np.clip(score, 0, 100))))
+
+
+def risk_gate(e,sl,tp,bt,sim,technical):
     rps=e-sl; why=[]
     qty=int(min(CFG["capital"]*CFG["risk_pct"]/100/rps,
-                CFG["capital"]*CFG["max_pos_pct"]/100/e))
-    rr=(tp-e)/rps
+                CFG["capital"]*CFG["max_pos_pct"]/100/e)) if rps > 0 and e > 0 else 0
+    rr=(tp-e)/rps if rps > 0 else 0
     if qty<1: why.append("position size below 1 share")
     if rr<CFG["min_rr"]: why.append(f"reward:risk {rr:.1f} below {CFG['min_rr']}")
-    if sim["target"]<=sim["stop"]: why.append("replay: stop hit at least as often as target")
-    if bt["n"]>=5 and bt["avg_r"]<=0: why.append("backtest expectancy not positive")
+    if not technical["passed"]:
+        why.extend(technical["reasons"])
+    # A BUY needs enough historical trades and positive expectancy.
+    if int(bt.get("n") or 0) < CFG["min_backtest_trades"]:
+        why.append(f"insufficient backtest sample: {bt.get('n', 0)} trades; need {CFG['min_backtest_trades']}")
+    elif bt.get("avg_r") is None or bt["avg_r"] <= 0:
+        why.append("backtest expectancy not positive")
+    # Replay is deliberately NOT a hard gate; it is shown in confidence/risk context.
     return dict(verdict="BLOCK" if why else "PASS",reasons=why,qty=qty,rr=round(rr,2),
-                max_loss=round(qty*rps),capital_used=round(qty*e))
+                max_loss=round(qty*rps) if qty else 0,
+                capital_used=round(qty*e) if qty else 0,
+                replay_is_blocker=False)
 
 
 def _pivot_points(values, left=3, right=3):
@@ -277,12 +339,16 @@ def _scan_one(symbol):
             sl=None, target=None, rsi=round(float(x.rsi),1), vol_x=round(float(x.vr),2),
             market_regime=None, reason="Bearish breakdown: review/exit existing long; not a cash short entry",
             bar=str(d.index[-1])), None
-    bt=backtest(d); sim=simulate(d,e,sl,tp); rg=risk_gate(e,sl,tp,bt,sim)
+    bt=backtest(d); sim=simulate(d,e,sl,tp)
+    technical=technical_confirmation(d)
+    rg=risk_gate(e,sl,tp,bt,sim,technical)
+    confidence=confidence_score(bt,sim,technical)
     return symbol, dict(symbol=symbol,signal="BUY" if rg["verdict"]=="PASS" else "WAIT",
         setup=x.sig,entry=round(e,2),sl=round(float(sl),2),target=round(float(tp),2),
         rsi=round(float(x.rsi),1),vol_x=round(float(x.vr),2),backtest=bt,replay=sim,
-        risk=rg,market_regime=None,score=round(float(sim["target"]-sim["stop"]+10*(bt["avg_r"] or 0)),1),
-        reason="; ".join(rg["reasons"]) if rg["reasons"] else "All configured gates passed",
+        technical_confirmation=technical,confidence_score=confidence,
+        risk=rg,market_regime=None,score=confidence,
+        reason="; ".join(rg["reasons"]) if rg["reasons"] else "Technical confirmation and positive backtest expectancy passed",
         bar=str(d.index[-1])), None
 
 def main():
@@ -313,7 +379,7 @@ def main():
                 if row is not None or err is None: scanned += 1
             except Exception as ex:
                 errors.append({"symbol":s,"error":f"{type(ex).__name__}: {str(ex)[:160]}"})
-    rows.sort(key=lambda r:(r.get("signal")!="BUY",-r.get("score",0)))
+    rows.sort(key=lambda r:(r.get("signal")!="BUY",-r.get("confidence_score",r.get("score",0))))
     # Attach daily candles and descriptive price-action analysis to the leading 40 signal rows.
     # This is separate from the unchanged 15m scanner, setup, backtest and risk calculations.
     chart_errors=[]
