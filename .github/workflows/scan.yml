@@ -1,6 +1,7 @@
 name: scan
 on:
   schedule:
+    # Scanner runs every 15 minutes during the India market session; this is NOT a 1-minute scan.
     # India market session (IST = UTC+5:30): 09:15 to 15:30, weekdays.
     - cron: "45 3 * * 1-5"
     - cron: "*/15 4-9 * * 1-5"
@@ -14,7 +15,7 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,4 +33,3 @@ jobs:
           git add data.json
           git commit -m "update scanner data" || echo "No data changes to commit"
           git push
-
