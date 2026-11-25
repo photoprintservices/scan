@@ -1,0 +1,31 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>India Swing Scanner</title>
+<style>
+:root{--bg:#f5f6f4;--card:#fff;--ink:#1b2320;--mute:#66706b;--line:#dde2de;--pass:#12714a;--block:#a8412f}
+@media(prefers-color-scheme:dark){:root{--bg:#121816;--card:#1a221f;--ink:#e6ece8;--mute:#8d9a93;--line:#2b3631;--pass:#4cc38a;--block:#e0806e}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Georgia,serif;padding:16px;max-width:860px;margin:auto}
+h1{font-size:22px;margin:0}.sub{color:var(--mute);font-size:13px;margin:4px 0 16px}
+.c{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px}
+.h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.s{font-size:17px;font-weight:bold}
+.v{font-weight:bold}.PASS{color:var(--pass)}.BLOCK{color:var(--block)}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px 12px;margin-top:8px;font-size:13px}
+.g b{display:block;color:var(--mute);font-weight:normal;font-size:12px}
+.w{color:var(--block);font-size:13px;margin-top:6px}.f{color:var(--mute);font-size:12px;margin-top:16px}
+</style></head><body>
+<h1>India swing scanner</h1><div class="sub" id="m">Loading…</div><div id="o"></div>
+<div class="f">Educational tool, not investment advice. Data from Yahoo Finance may be delayed. Backtest and replay are estimates; past results do not predict future ones. Check every price in your broker before acting.</div>
+<script>
+fetch("data.json?"+Date.now()).then(r=>r.json()).then(d=>{
+ m.textContent=`Updated ${d.updated} · 15-min candles · ${d.scanned} stocks scanned${d.demo?" · DEMO DATA":""}`;
+ if(!d.rows.length){o.innerHTML='<div class="c">No setups right now. The scanner checks again at the next 15-minute candle.</div>';return}
+ o.innerHTML=d.rows.map(r=>{const b=r.backtest,p=r.replay,k=r.risk;
+ return `<div class="c"><div class="h"><span class="s">${r.symbol}</span><span class="v ${k.verdict}">${k.verdict}</span></div>
+ <div>${r.setup} · RSI ${r.rsi} · volume ${r.vol_x}x</div>
+ <div class="g"><div><b>Entry</b>₹${r.entry}</div><div><b>Stop-loss</b>₹${r.sl}</div><div><b>Target</b>₹${r.target}</div><div><b>Reward:risk</b>${k.rr}</div>
+ <div><b>Quantity</b>${k.qty} (₹${k.capital_used})</div><div><b>Max loss</b>₹${k.max_loss}</div>
+ <div><b>Replay: target first</b>${p.target}%</div><div><b>Replay: stop first</b>${p.stop}%</div>
+ <div><b>Backtest trades</b>${b.n}</div><div><b>Backtest win rate</b>${b.win??"–"}${b.win!=null?"%":""}</div><div><b>Avg result (R)</b>${b.avg_r??"–"}</div></div>
+ ${k.reasons.length?`<div class="w">Blocked: ${k.reasons.join("; ")}</div>`:""}</div>`}).join("")
+}).catch(()=>{m.textContent="No data yet. Run the scan workflow once."});
+</script></body></html>
