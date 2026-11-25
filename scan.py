@@ -1,15 +1,19 @@
-"""India Swing Scanner v2: Yahoo Finance 15m candles -> PA setups -> levels -> backtest
--> Monte Carlo replay -> risk gate -> data.json for GitHub Pages.
+"""India Swing Scanner v3: Yahoo Finance 15m -> setups/backtest/replay -> data.json.
 
-No Dhan API, no broker orders. F&O symbols are read from fno_symbols.txt.
+Price/candle data: Yahoo Finance only.
+Universe: exact 152 curated EXTENDED symbols from the user's v6.1.1 engine,
+plus current NSE stock-F&O underlyings discovered from Dhan's PUBLIC scrip-master CSV.
+No Dhan account, access token, quotes API, or broker order placement is used.
 """
-import os, json, datetime as dt
+import os, json, datetime as dt, re, io
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 import pandas as pd
+import requests
 
 CFG = dict(
-    universe="fno", timeframe="15m", rsi_period=14,
+    universe="v6.1.1 EXTENDED + current F&O", timeframe="15m", rsi_period=14,
     capital=100000, risk_pct=1.0, min_rr=2.0, max_pos_pct=25,
     cost_pct=0.15, sims=2000, hold_bars=52, seed=19,
     breakout_lookback=20, volume_multiple=1.30,
@@ -17,20 +21,39 @@ CFG = dict(
     rsi_buy_min=55, rsi_sell_max=45,
     use_nifty_filter=True
 )
+Dhan_MASTER_URL = "https://images.dhan.co/api-data/api-scrip-master-detailed.csv"
+UA = {"User-Agent": "Mozilla/5.0"}
 
-# Fallback only. For the full, current stock-F&O universe, maintain fno_symbols.txt
-# with one NSE underlying symbol per line (e.g. RELIANCE, SBIN, TCS).
-FALLBACK_SYMS = """RELIANCE TCS HDFCBANK ICICIBANK INFY SBIN BHARTIARTL ITC LT AXISBANK KOTAKBANK
-HINDUNILVR MARUTI SUNPHARMA TATASTEEL M&M BAJFINANCE ASIANPAINT NTPC POWERGRID
-ONGC COALINDIA ADANIPORTS TITAN ULTRACEMCO WIPRO HCLTECH JSWSTEEL""".split()
+def _clean_symbol(value):
+    z = str(value or "").strip().upper()
+    z = re.sub(r"-(EQ|BE|BZ)$", "", z)
+    if not z or "TEST" in z or not re.match(r"^[A-Z][A-Z0-9&._-]{0,24}$", z):
+        return ""
+    return z
 
 def load_universe():
     p = Path(__file__).with_name("fno_symbols.txt")
-    if p.exists():
-        symbols = [x.strip().upper() for x in p.read_text(encoding="utf-8").splitlines()
-                   if x.strip() and not x.strip().startswith("#")]
-        return list(dict.fromkeys(symbols)), "fno_symbols.txt"
-    return FALLBACK_SYMS, "fallback_28 (fno_symbols.txt missing)"
+    curated = [x.strip().upper() for x in p.read_text(encoding="utf-8").splitlines()
+               if x.strip() and not x.strip().startswith("#")] if p.exists() else []
+    curated = list(dict.fromkeys(curated))
+    try:
+        response = requests.get(Dhan_MASTER_URL, headers=UA, timeout=45)
+        response.raise_for_status()
+        master = pd.read_csv(io.BytesIO(response.content), low_memory=False).fillna("")
+        # Support the detailed-master field names used by v6.1.1 and common aliases.
+        exch_col = "SEM_EXM_EXCH_ID" if "SEM_EXM_EXCH_ID" in master else "EXCH_ID"
+        inst_col = "SEM_INSTRUMENT_NAME" if "SEM_INSTRUMENT_NAME" in master else "INSTRUMENT"
+        under_col = "UNDERLYING_SYMBOL" if "UNDERLYING_SYMBOL" in master else "SYMBOL_NAME"
+        if not all(c in master.columns for c in (exch_col, inst_col, under_col)):
+            raise ValueError("Dhan public master has an unexpected column layout")
+        mask = master[exch_col].astype(str).str.upper().isin(["NSE", "NSE_FNO"])
+        mask &= master[inst_col].astype(str).str.upper().eq("FUTSTK")
+        extras = sorted({_clean_symbol(x) for x in master.loc[mask, under_col].tolist()} - {""})
+        combined = list(dict.fromkeys(curated + [x for x in extras if x not in set(curated)]))
+        return combined, f"v6.1.1 curated {len(curated)} + public F&O master {len([x for x in extras if x not in set(curated)])}", None
+    except Exception as ex:
+        return curated, f"v6.1.1 curated {len(curated)} (F&O auto-discovery unavailable)", \
+               f"Public F&O master: {type(ex).__name__}: {str(ex)[:180]}"
 
 def _demo_data(sym, periods=59):
     rng = np.random.default_rng(sum(map(ord, sym)))
@@ -49,7 +72,7 @@ def load(sym):
         return _demo_data(sym)
     import yfinance as yf
     d = yf.download(sym + ".NS", period="59d", interval="15m",
-                    progress=False, auto_adjust=True, prepost=False)
+                    progress=False, auto_adjust=True, prepost=False, threads=False)
     if isinstance(d.columns, pd.MultiIndex):
         d.columns = d.columns.get_level_values(0)
     return d.dropna()
@@ -59,7 +82,7 @@ def load_nifty():
         return _demo_data("NIFTY")
     import yfinance as yf
     d = yf.download("^NSEI", period="59d", interval="15m",
-                    progress=False, auto_adjust=True, prepost=False)
+                    progress=False, auto_adjust=True, prepost=False, threads=False)
     if isinstance(d.columns, pd.MultiIndex):
         d.columns = d.columns.get_level_values(0)
     return d.dropna()
@@ -155,51 +178,62 @@ def risk_gate(e,sl,tp,bt,sim):
     return dict(verdict="BLOCK" if why else "PASS",reasons=why,qty=qty,rr=round(rr,2),
                 max_loss=round(qty*rps),capital_used=round(qty*e))
 
+def _scan_one(symbol):
+    raw = load(symbol)
+    if len(raw) < 120:
+        return symbol, None, "insufficient Yahoo Finance history"
+    d = prep(raw)
+    x = d.iloc[-1]
+    if x.sig == "" or pd.isna(x.atr):
+        return symbol, None, None
+    e = float(x.Close); sl, tp = levels(e, float(x.atr), float(x.sw))
+    if x.sig == "Breakdown / EXIT":
+        return symbol, dict(symbol=symbol, signal="SELL / EXIT", setup=x.sig, entry=round(e,2),
+            sl=None, target=None, rsi=round(float(x.rsi),1), vol_x=round(float(x.vr),2),
+            market_regime=None, reason="Bearish breakdown: review/exit existing long; not a cash short entry",
+            bar=str(d.index[-1])), None
+    bt=backtest(d); sim=simulate(d,e,sl,tp); rg=risk_gate(e,sl,tp,bt,sim)
+    return symbol, dict(symbol=symbol,signal="BUY" if rg["verdict"]=="PASS" else "WAIT",
+        setup=x.sig,entry=round(e,2),sl=round(float(sl),2),target=round(float(tp),2),
+        rsi=round(float(x.rsi),1),vol_x=round(float(x.vr),2),backtest=bt,replay=sim,
+        risk=rg,market_regime=None,score=round(float(sim["target"]-sim["stop"]+10*(bt["avg_r"] or 0)),1),
+        reason="; ".join(rg["reasons"]) if rg["reasons"] else "All configured gates passed",
+        bar=str(d.index[-1])), None
+
 def main():
-    symbols, universe_source = load_universe()
+    symbols, universe_source, universe_warning = load_universe()
     try:
         nifty=load_nifty()
         regime=nifty_regime(nifty)
     except Exception as ex:
-        nifty=None; regime="UNKNOWN"
+        regime="UNKNOWN"
         print("NIFTY filter unavailable:",type(ex).__name__,str(ex)[:160])
-    rows=[]; scanned=0; errors=[]
-    for s in symbols:
-        try:
-            raw=load(s)
-            if len(raw)<120: continue
-            d=prep(raw); scanned+=1; x=d.iloc[-1]
-            if x.sig=="" or pd.isna(x.atr): continue
-            e=float(x.Close); sl,tp=levels(e,float(x.atr),float(x.sw))
-            if x.sig=="Breakdown / EXIT":
-                rows.append(dict(symbol=s,signal="SELL / EXIT",setup=x.sig,entry=round(e,2),
-                                 sl=None,target=None,rsi=round(float(x.rsi),1),
-                                 vol_x=round(float(x.vr),2),market_regime=regime,
-                                 reason="Bearish breakdown: review/exit existing long; not a cash short entry",
-                                 bar=str(d.index[-1])))
-                continue
-            bt=backtest(d); sim=simulate(d,e,sl,tp); rg=risk_gate(e,sl,tp,bt,sim)
-            gate_reason=[]
-            if CFG["use_nifty_filter"] and regime=="BEARISH": gate_reason.append("NIFTY regime bearish")
-            if CFG["use_nifty_filter"] and regime=="SIDEWAYS": gate_reason.append("NIFTY regime sideways")
-            if gate_reason: rg["verdict"]="BLOCK"; rg["reasons"]+=gate_reason
-            score=sim["target"]-sim["stop"]+10*(bt["avg_r"] or 0)
-            rows.append(dict(symbol=s,signal="BUY" if rg["verdict"]=="PASS" else "WAIT",
-                setup=x.sig,entry=round(e,2),sl=round(float(sl),2),target=round(float(tp),2),
-                rsi=round(float(x.rsi),1),vol_x=round(float(x.vr),2),backtest=bt,
-                replay=sim,risk=rg,market_regime=regime,score=round(float(score),1),
-                reason="; ".join(rg["reasons"]) if rg["reasons"] else "All configured gates passed",
-                bar=str(d.index[-1])))
-        except Exception as ex:
-            errors.append({"symbol":s,"error":f"{type(ex).__name__}: {str(ex)[:160]}"})
+    rows=[]; errors=[]; scanned=0
+    if universe_warning:
+        errors.append({"symbol":"UNIVERSE","error":universe_warning})
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures={pool.submit(_scan_one,s):s for s in symbols}
+        for fut in as_completed(futures):
+            s=futures[fut]
+            try:
+                _, row, err=fut.result()
+                if row:
+                    row["market_regime"]=regime
+                    if row["signal"] != "SELL / EXIT" and CFG["use_nifty_filter"] and regime in ("BEARISH","SIDEWAYS"):
+                        row["risk"]["verdict"]="BLOCK"
+                        row["risk"]["reasons"].append(f"NIFTY regime {regime.lower()}")
+                        row["signal"]="WAIT"
+                    rows.append(row)
+                if err: errors.append({"symbol":s,"error":err})
+                if row is not None or err is None: scanned += 1
+            except Exception as ex:
+                errors.append({"symbol":s,"error":f"{type(ex).__name__}: {str(ex)[:160]}"})
     rows.sort(key=lambda r:(r.get("signal")!="BUY",-r.get("score",0)))
     ist=dt.datetime.now(dt.timezone(dt.timedelta(hours=5,minutes=30)))
     payload=dict(updated=ist.strftime("%d %b %Y, %H:%M IST"),scanned=scanned,
-                 universe_count=len(symbols),universe_source=universe_source,
-                 data_source="Yahoo Finance 15m",market_regime=regime,
-                 demo=bool(os.getenv("DEMO")),config=CFG,rows=rows,errors=errors)
+        universe_count=len(symbols),universe_source=universe_source,data_source="Yahoo Finance 15m",
+        market_regime=regime,demo=bool(os.getenv("DEMO")),config=CFG,rows=rows,errors=errors)
     Path("data.json").write_text(json.dumps(payload,indent=2,default=str),encoding="utf-8")
     print(f"scanned {scanned}/{len(symbols)}, setups {len(rows)}, NIFTY {regime}; source={universe_source}")
-
 if __name__=="__main__":
     main()

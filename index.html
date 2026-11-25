@@ -30,6 +30,7 @@ h1{font-size:22px;margin:0}.sub{color:var(--mute);font-size:13px;margin:4px 0 16
 <script>
 const money = v => v == null ? "–" : "₹" + Number(v).toLocaleString("en-IN",{maximumFractionDigits:2});
 const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let lastDataUpdated = "";
 function card(r){
   const isExit = r.signal === "SELL / EXIT";
   if(isExit){
@@ -56,24 +57,34 @@ function card(r){
     <div class="note">Signal candle: ${esc(r.bar || "–")} · Regime: ${esc(r.market_regime || "–")}</div>
   </div>`;
 }
-fetch("data.json?"+Date.now(),{cache:"no-store"})
-.then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json()})
-.then(d=>{
-  const rows=Array.isArray(d.rows)?d.rows:[];
-  document.getElementById("m").textContent=`Updated ${d.updated||"–"} · ${d.config?.timeframe||"15m"} candles · ${d.scanned??0}/${d.universe_count??"–"} stocks scanned${d.demo?" · DEMO DATA":""}`;
-  document.getElementById("summary").innerHTML=
-    `<span class="pill">Source: ${esc(d.data_source||"Yahoo Finance")}</span><span class="pill">Universe file: ${esc(d.universe_source||"–")}</span><span class="pill">NIFTY regime: ${esc(d.market_regime||"UNKNOWN")}</span><span class="pill">Signals: ${rows.length}</span>`;
-  if(!rows.length){
-    document.getElementById("o").innerHTML=`<div class="c">No setups right now. Scanned ${esc(d.scanned??0)} of ${esc(d.universe_count??0)} symbols. Check again after the next scheduled scan.${d.errors?.length?`<div class="note">${esc(d.errors.length)} symbol/data errors occurred.</div>`:""}</div>`;
-    return;
+async function refreshDashboard(){
+  try{
+    const response = await fetch("data.json?ts="+Date.now(),{cache:"no-store"});
+    if(!response.ok) throw new Error("HTTP "+response.status);
+    const d = await response.json();
+    const rows = Array.isArray(d.rows)?d.rows:[];
+    lastDataUpdated = d.updated || "";
+    document.getElementById("m").textContent =
+      `Updated ${d.updated||"–"} · ${d.config?.timeframe||"15m"} candles · ${d.scanned??0}/${d.universe_count??"–"} stocks scanned${d.demo?" · DEMO DATA":""}`;
+    document.getElementById("summary").innerHTML =
+      `<span class="pill">Source: ${esc(d.data_source||"Yahoo Finance")}</span><span class="pill">Universe file: ${esc(d.universe_source||"–")}</span><span class="pill">NIFTY regime: ${esc(d.market_regime||"UNKNOWN")}</span><span class="pill">Signals: ${rows.length}</span><span class="pill">Auto-check: every 60 sec</span>`;
+    if(!rows.length){
+      document.getElementById("o").innerHTML =
+        `<div class="c">No setups right now. Scanned ${esc(d.scanned??0)} of ${esc(d.universe_count??0)} symbols. Check again after the next scheduled scan.${d.errors?.length?`<div class="note">${esc(d.errors.length)} symbol/data errors occurred.</div>`:""}</div>`;
+      return;
+    }
+    document.getElementById("o").innerHTML = rows.map(card).join("") +
+      (d.errors?.length?`<div class="c note">Data errors for ${esc(d.errors.length)} symbol(s). Some symbols may not have returned usable Yahoo Finance history.</div>`:"");
+  }catch(err){
+    if(!lastDataUpdated){
+      document.getElementById("m").textContent="Scanner data could not be loaded.";
+      document.getElementById("o").innerHTML =
+        `<div class="c">No readable data.json found. Run the GitHub Actions workflow once and confirm that data.json is committed to the repository.<div class="note">${esc(err.message)}</div></div>`;
+    }
   }
-  document.getElementById("o").innerHTML=rows.map(card).join("")+
-    (d.errors?.length?`<div class="c note">Data errors for ${esc(d.errors.length)} symbol(s). Some symbols may not have returned usable Yahoo Finance history.</div>`:"");
-})
-.catch(err=>{
-  document.getElementById("m").textContent="Scanner data could not be loaded.";
-  document.getElementById("o").innerHTML=`<div class="c">No readable data.json found. Run the GitHub Actions workflow once and confirm that data.json is committed to the repository.<div class="note">${esc(err.message)}</div></div>`;
-});
+}
+refreshDashboard();
+setInterval(refreshDashboard, 60000);
 </script>
 </body>
 </html>
