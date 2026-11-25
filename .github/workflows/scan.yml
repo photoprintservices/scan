@@ -1,18 +1,35 @@
 name: scan
 on:
   schedule:
-    - cron: "*/15 3-10 * * 1-5"
+    # India market session (IST = UTC+5:30): 09:15 to 15:30, weekdays.
+    - cron: "45 3 * * 1-5"
+    - cron: "*/15 4-9 * * 1-5"
+    - cron: "0 10 * * 1-5"
   workflow_dispatch:
 permissions:
   contents: write
+concurrency:
+  group: india-swing-scan
+  cancel-in-progress: false
 jobs:
   scan:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - run: pip install -r requirements.txt && python scan.py
-      - run: |
-          git config user.name "scan-bot"; git config user.email "bot@users.noreply.github.com"
-          git add data.json; git commit -m "update data" || exit 0; git push
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run Yahoo Finance scanner
+        run: python scan.py
+      - name: Commit latest dashboard data
+        run: |
+          git config user.name "scan-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add data.json
+          git commit -m "update scanner data" || echo "No data changes to commit"
+          git push
+
