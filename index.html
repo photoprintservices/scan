@@ -1,31 +1,79 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8">
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="India 15-minute swing scanner dashboard using Yahoo Finance data.">
 <title>India Swing Scanner</title>
 <style>
-:root{--bg:#f5f6f4;--card:#fff;--ink:#1b2320;--mute:#66706b;--line:#dde2de;--pass:#12714a;--block:#a8412f}
-@media(prefers-color-scheme:dark){:root{--bg:#121816;--card:#1a221f;--ink:#e6ece8;--mute:#8d9a93;--line:#2b3631;--pass:#4cc38a;--block:#e0806e}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Georgia,serif;padding:16px;max-width:860px;margin:auto}
+:root{--bg:#f5f6f4;--card:#fff;--ink:#1b2320;--mute:#66706b;--line:#dde2de;--pass:#12714a;--block:#a8412f;--wait:#8a6414}
+@media(prefers-color-scheme:dark){:root{--bg:#121816;--card:#1a221f;--ink:#e6ece8;--mute:#8d9a93;--line:#2b3631;--pass:#4cc38a;--block:#e0806e;--wait:#e5bd65}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Georgia,serif;padding:16px;max-width:900px;margin:auto}
 h1{font-size:22px;margin:0}.sub{color:var(--mute);font-size:13px;margin:4px 0 16px}
 .c{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px}
 .h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.s{font-size:17px;font-weight:bold}
-.v{font-weight:bold}.PASS{color:var(--pass)}.BLOCK{color:var(--block)}
+.v{font-weight:bold}.PASS,.BUY{color:var(--pass)}.BLOCK,.SELL{color:var(--block)}.WAIT{color:var(--wait)}
 .g{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px 12px;margin-top:8px;font-size:13px}
 .g b{display:block;color:var(--mute);font-weight:normal;font-size:12px}
-.w{color:var(--block);font-size:13px;margin-top:6px}.f{color:var(--mute);font-size:12px;margin-top:16px}
-</style></head><body>
-<h1>India swing scanner</h1><div class="sub" id="m">Loading…</div><div id="o"></div>
-<div class="f">Educational tool, not investment advice. Data from Yahoo Finance may be delayed. Backtest and replay are estimates; past results do not predict future ones. Check every price in your broker before acting.</div>
+.w{color:var(--block);font-size:13px;margin-top:6px}.note{color:var(--mute);font-size:13px;margin-top:6px}
+.f{color:var(--mute);font-size:12px;margin-top:16px}
+.pill{display:inline-block;border:1px solid var(--line);border-radius:20px;padding:2px 8px;font-size:11px;color:var(--mute);margin:4px 5px 0 0}
+</style>
+</head>
+<body>
+<h1>India Swing Scanner</h1>
+<div class="sub" id="m">Loading scanner data…</div>
+<div id="summary"></div>
+<div id="o"><div class="c">Loading latest scan…</div></div>
+<div class="f">Educational tool, not investment advice. Data from Yahoo Finance may be delayed or incomplete. Backtest and replay are estimates; past results do not predict future results. Verify prices and risk independently before acting. This dashboard does not place broker orders. SELL / EXIT means review an existing cash long; it is not a short-entry recommendation.</div>
 <script>
-fetch("data.json?"+Date.now()).then(r=>r.json()).then(d=>{
- m.textContent=`Updated ${d.updated} · 15-min candles · ${d.scanned} stocks scanned${d.demo?" · DEMO DATA":""}`;
- if(!d.rows.length){o.innerHTML='<div class="c">No setups right now. The scanner checks again at the next 15-minute candle.</div>';return}
- o.innerHTML=d.rows.map(r=>{const b=r.backtest,p=r.replay,k=r.risk;
- return `<div class="c"><div class="h"><span class="s">${r.symbol}</span><span class="v ${k.verdict}">${k.verdict}</span></div>
- <div>${r.setup} · RSI ${r.rsi} · volume ${r.vol_x}x</div>
- <div class="g"><div><b>Entry</b>₹${r.entry}</div><div><b>Stop-loss</b>₹${r.sl}</div><div><b>Target</b>₹${r.target}</div><div><b>Reward:risk</b>${k.rr}</div>
- <div><b>Quantity</b>${k.qty} (₹${k.capital_used})</div><div><b>Max loss</b>₹${k.max_loss}</div>
- <div><b>Replay: target first</b>${p.target}%</div><div><b>Replay: stop first</b>${p.stop}%</div>
- <div><b>Backtest trades</b>${b.n}</div><div><b>Backtest win rate</b>${b.win??"–"}${b.win!=null?"%":""}</div><div><b>Avg result (R)</b>${b.avg_r??"–"}</div></div>
- ${k.reasons.length?`<div class="w">Blocked: ${k.reasons.join("; ")}</div>`:""}</div>`}).join("")
-}).catch(()=>{m.textContent="No data yet. Run the scan workflow once."});
-</script></body></html>
+const money = v => v == null ? "–" : "₹" + Number(v).toLocaleString("en-IN",{maximumFractionDigits:2});
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function card(r){
+  const isExit = r.signal === "SELL / EXIT";
+  if(isExit){
+    return `<div class="c">
+      <div class="h"><span class="s">${esc(r.symbol)}</span><span class="v SELL">SELL / EXIT</span></div>
+      <div>${esc(r.setup || "Bearish breakdown")} · RSI ${esc(r.rsi)} · volume ${esc(r.vol_x)}x</div>
+      <div class="note">${esc(r.reason || "Review an existing long position. Not a short-entry signal.")}</div>
+      <div class="g"><div><b>Latest close</b>${money(r.entry)}</div><div><b>Market regime</b>${esc(r.market_regime || "–")}</div><div><b>Signal candle</b>${esc(r.bar || "–")}</div></div>
+    </div>`;
+  }
+  const b=r.backtest||{}, p=r.replay||{}, k=r.risk||{};
+  const verdict=k.verdict||r.signal||"WAIT";
+  return `<div class="c">
+    <div class="h"><span class="s">${esc(r.symbol)}</span><span class="v ${esc(verdict)}">${esc(r.signal||verdict)} · ${esc(verdict)}</span></div>
+    <div>${esc(r.setup)} · RSI ${esc(r.rsi)} · volume ${esc(r.vol_x)}x</div>
+    <div class="g">
+      <div><b>Entry reference</b>${money(r.entry)}</div><div><b>Stop-loss</b>${money(r.sl)}</div><div><b>Target</b>${money(r.target)}</div><div><b>Reward:risk</b>${esc(k.rr ?? "–")}</div>
+      <div><b>Illustrative quantity</b>${esc(k.qty ?? "–")}</div><div><b>Capital used</b>${money(k.capital_used)}</div><div><b>Estimated max loss</b>${money(k.max_loss)}</div>
+      <div><b>Replay: target first</b>${p.target==null?"–":esc(p.target)+"%"}</div><div><b>Replay: stop first</b>${p.stop==null?"–":esc(p.stop)+"%"}</div><div><b>Backtest trades</b>${esc(b.n ?? "–")}</div>
+      <div><b>Backtest win rate</b>${b.win==null?"–":esc(b.win)+"%"}</div><div><b>Average result (R)</b>${esc(b.avg_r ?? "–")}</div>
+    </div>
+    ${k.reasons?.length?`<div class="w">Blocked: ${k.reasons.map(esc).join("; ")}</div>`:""}
+    ${r.reason?`<div class="note">${esc(r.reason)}</div>`:""}
+    <div class="note">Signal candle: ${esc(r.bar || "–")} · Regime: ${esc(r.market_regime || "–")}</div>
+  </div>`;
+}
+fetch("data.json?"+Date.now(),{cache:"no-store"})
+.then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json()})
+.then(d=>{
+  const rows=Array.isArray(d.rows)?d.rows:[];
+  document.getElementById("m").textContent=`Updated ${d.updated||"–"} · ${d.config?.timeframe||"15m"} candles · ${d.scanned??0}/${d.universe_count??"–"} stocks scanned${d.demo?" · DEMO DATA":""}`;
+  document.getElementById("summary").innerHTML=
+    `<span class="pill">Source: ${esc(d.data_source||"Yahoo Finance")}</span><span class="pill">Universe file: ${esc(d.universe_source||"–")}</span><span class="pill">NIFTY regime: ${esc(d.market_regime||"UNKNOWN")}</span><span class="pill">Signals: ${rows.length}</span>`;
+  if(!rows.length){
+    document.getElementById("o").innerHTML=`<div class="c">No setups right now. Scanned ${esc(d.scanned??0)} of ${esc(d.universe_count??0)} symbols. Check again after the next scheduled scan.${d.errors?.length?`<div class="note">${esc(d.errors.length)} symbol/data errors occurred.</div>`:""}</div>`;
+    return;
+  }
+  document.getElementById("o").innerHTML=rows.map(card).join("")+
+    (d.errors?.length?`<div class="c note">Data errors for ${esc(d.errors.length)} symbol(s). Some symbols may not have returned usable Yahoo Finance history.</div>`:"");
+})
+.catch(err=>{
+  document.getElementById("m").textContent="Scanner data could not be loaded.";
+  document.getElementById("o").innerHTML=`<div class="c">No readable data.json found. Run the GitHub Actions workflow once and confirm that data.json is committed to the repository.<div class="note">${esc(err.message)}</div></div>`;
+});
+</script>
+</body>
+</html>
